@@ -2,43 +2,45 @@ import streamlit as st
 import paho.mqtt.client as mqtt
 import json
 import base64
+from streamlit_autorefresh import st_autorefresh
 
 # --- STREAMLIT SAYFA AYARLARI ---
 st.set_page_config(page_title="TÜRKSAPP VIP", page_icon="💬", layout="centered")
-st.title("💬 TÜRKSAPP - Canlı Sohbet ve Medya")
+st.title("💬 TÜRKSAPP - Gerçek Zamanlı Sohbet")
 
-# Sabit MQTT Sunucusu ve Oda
+# 3 saniyede bir ekranı otomatik yenile (Telefon ve PC arası senkronizasyon için şart)
+st_autorefresh(interval=3000, key="datarefresh")
+
 MQTT_BROKER = "broker.hivemq.com"
 MQTT_PORT = 1883
-MQTT_TOPIC = "turksapp/genel_oda_v4"
+MQTT_TOPIC = "turksapp/genel_oda_v5"
 
-# --- HAFIZA BAŞLATMA ---
+# --- HAFIZA ---
 if "mesajlar" not in st.session_state:
     st.session_state.mesajlar = []
 
 if "kullanici_adi" not in st.session_state:
     st.session_state.kullanici_adi = ""
 
-# --- SOL MENÜ: KULLANICI ADI AYARI ---
+# --- SOL MENÜ: KULLANICI ADI ---
 with st.sidebar:
-    st.header("⚙️ Profil Ayarları")
-    adi_input = st.text_input("Kullanıcı Adınızı Girin:", value=st.session_state.kullanici_adi)
+    st.header("⚙️ Profil")
+    giris = st.text_input("Kullanıcı Adı:", value=st.session_state.kullanici_adi)
     if st.button("Kaydet ve Bağlan"):
-        if adi_input.strip():
-            st.session_state.kullanici_adi = adi_input.strip()
-            st.success("Kullanıcı adı kaydedildi!")
+        if giris.strip():
+            st.session_state.kullanici_adi = giris.strip()
+            st.success("Bağlandı!")
 
 if not st.session_state.kullanici_adi:
-    st.warning("👈 Soldaki menüden kullanıcı adını yazıp 'Kaydet ve Bağlan' butonuna bas.")
+    st.warning("👈 Önce soldan kullanıcı adını girip kaydet.")
     st.stop()
 
-# --- MQTT DİNLEYİCİSİ ---
+# --- MQTT BAĞLANTISI ---
 def on_message(client, userdata, message):
     try:
         data = json.loads(message.payload.decode())
-        if data.get("sender") != st.session_state.kullanici_adi:
-            if data not in st.session_state.mesajlar:
-                st.session_state.mesajlar.append(data)
+        if data not in st.session_state.mesajlar:
+            st.session_state.mesajlar.append(data)
     except Exception:
         pass
 
@@ -56,34 +58,25 @@ def get_mqtt_client():
 
 mqtt_client = get_mqtt_client()
 
-# --- ÜST BAR: BAĞLANTI VE YENİLEME ---
-col1, col2 = st.columns([3, 1])
-with col1:
-    st.write(f"🟢 Aktif Kullanıcı: **{st.session_state.kullanici_adi}**")
-with col2:
-    if st.button("🔄 Akışı Yenile"):
+# --- MEDYA GÖNDERME (FOTO / SES) ---
+with st.expander("📷 Fotoğraf veya 🎙️ Ses Gönder"):
+    dosya = st.file_uploader("Dosya Seç", type=["png", "jpg", "jpeg", "mp3", "wav"])
+    if dosya is not None and st.button("Yayınla"):
+        encoded = base64.b64encode(dosya.read()).decode("utf-8")
+        paket = {
+            "sender": st.session_state.kullanici_adi,
+            "type": "media",
+            "mime": dosya.type,
+            "data": encoded
+        }
+        st.session_state.mesajlar.append(paket)
+        mqtt_client.publish(MQTT_TOPIC, json.dumps(paket))
+        st.success("Gönderildi!")
         st.rerun()
 
-# --- FOTOĞRAF VE SES GÖNDERME ---
-with st.expander("📷 Resim veya 🎙️ Ses Dosyası Gönder"):
-    yuklenen_dosya = st.file_uploader("Dosya Seç", type=["png", "jpg", "jpeg", "mp3", "wav"])
-    if yuklenen_dosya is not None:
-        if st.button("Medyayı Yayınla"):
-            dosya_bayt = yuklenen_dosya.read()
-            encoded_data = base64.b64encode(dosya_bayt).decode("utf-8")
-            
-            medya_paketi = {
-                "sender": st.session_state.kullanici_adi,
-                "type": "media",
-                "mime": yuklenen_dosya.type,
-                "data": encoded_data
-            }
-            st.session_state.mesajlar.append(medya_paketi)
-            mqtt_client.publish(MQTT_TOPIC, json.dumps(medya_paketi))
-            st.success("Medya gönderildi!")
-            st.rerun()
+# --- MESAJLARI LİSTELE ---
+st.write(f"🟢 Aktif: **{st.session_state.kullanici_adi}**")
 
-# --- GEÇMİŞ MESAJLARI VE MEDYALARI GÖSTER ---
 for msg in st.session_state.mesajlar:
     gonderen = msg.get("sender", "Biri")
     is_me = (gonderen == st.session_state.kullanici_adi)
@@ -94,22 +87,22 @@ for msg in st.session_state.mesajlar:
         if msg.get("type") == "text":
             st.write(msg.get("text"))
         elif msg.get("type") == "media":
-            raw_data = base64.b64decode(msg["data"])
+            raw = base64.b64decode(msg["data"])
             mime = msg.get("mime", "")
             if "image" in mime:
-                st.image(raw_data)
+                st.image(raw)
             elif "audio" in mime:
-                st.audio(raw_data, format=mime)
+                st.audio(raw, format=mime)
 
-# --- METİN MESAJI GİRİŞİ (ENTER DESTEKLİ) ---
-prompt = st.chat_input("Mesajınızı yazın ve Enter'a basın...")
+# --- MESAJ GİRİŞİ ---
+prompt = st.chat_input("Mesaj yaz ve Enter'a bas...")
 
 if prompt:
-    mesaj_paketi = {
+    paket = {
         "sender": st.session_state.kullanici_adi,
         "type": "text",
         "text": prompt
     }
-    st.session_state.mesajlar.append(mesaj_paketi)
-    mqtt_client.publish(MQTT_TOPIC, json.dumps(mesaj_paketi))
+    st.session_state.mesajlar.append(paket)
+    mqtt_client.publish(MQTT_TOPIC, json.dumps(paket))
     st.rerun()
