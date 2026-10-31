@@ -19,7 +19,7 @@ if "mesajlar" not in st.session_state:
 if "bagli" not in st.session_state:
     st.session_state.bagli = False
 
-# --- KULLANICI GİRİŞ PANELİ (KENAR ÇUCU) ---
+# --- KULLANICI GİRİŞ PANELİ (KENAR ÇUBU) ---
 with st.sidebar:
     st.header("⚙️ Sohbet Ayarları")
     girilen_ad = st.text_input("Kullanıcı Adınızı Girin:", value="Kanka")
@@ -36,7 +36,7 @@ with st.sidebar:
 if not st.session_state.bagli:
     st.info("👈 Soldaki menüden kullanıcı adını girip **Odaya Bağlan** butonuna basarak sohbete başlayabilirsin!")
 else:
-    st.write(f"🟢 Aktif Kullanıcı: **{st.session_state.kullanici_adi**} | Oda: `Genel Sohbet`")
+    st.write(f"🟢 Aktif Kullanıcı: **{st.session_state.kullanici_adi}** | Oda: `Genel Sohbet`")
 
     # --- MQTT GELEN MESAJ DİNLEYİCİSİ ---
     def on_message(client, userdata, message):
