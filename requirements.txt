@@ -4,3 +4,4 @@ pycryptodome
 sounddevice
 scipy
 numpy
+plyer
